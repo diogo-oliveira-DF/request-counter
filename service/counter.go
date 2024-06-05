@@ -10,9 +10,7 @@ import (
 	"time"
 )
 
-const (
-	dataFile = "./output/counter.json"
-)
+const dataFile = "./output/counter.json"
 
 var (
 	mu       sync.Mutex
@@ -30,15 +28,46 @@ func Handler(w http.ResponseWriter, _ *http.Request) {
 	now := time.Now()
 	requests = append(requests, now)
 
-	// TODO HERE Logic to clean old requests
+	checkAndCleanRequests(now)
 
 	count := len(requests)
-	_, err := w.Write([]byte(fmt.Sprintf("Number of requests in the last 60 seconds: %d", count)))
+	_, err := w.Write([]byte(fmt.Sprintf("Nº of requests within last 60 seconds: %d", count)))
 	if err != nil {
 		log.Printf("failed to send output: %v", err)
 	}
 
-	// TODO HERE save new requests data to file
+	saveData()
+}
+
+// checkAndCleanRequests Whenever the system is called,
+// removes timestamps from the requests slice that are older than 60 seconds from the current time
+// This ensures that the server only counts requests received within the last 60 seconds
+// at the end, updates requests slice with that new info
+func checkAndCleanRequests(now time.Time) {
+	var validRequests []time.Time
+
+	timeLimit := now.Add(-60 * time.Second)
+	for _, t := range requests {
+		if t.After(timeLimit) {
+			validRequests = append(validRequests, t)
+		}
+	}
+	requests = validRequests
+}
+
+// saveData Whenever the system is called, a timestamp will be added to the counter slice
+// and then added to the file that contains all the records
+func saveData() {
+	data, err := json.Marshal(requests)
+	if err != nil {
+		log.Printf("failed to marshall requests: %v", err)
+		return
+	}
+
+	err = os.WriteFile(dataFile, data, 0644)
+	if err != nil {
+		log.Printf("failed to write data to file: %v", err)
+	}
 }
 
 // LoadSavedData When the service is booted, it will read a json file containing
@@ -55,13 +84,13 @@ func LoadSavedData() {
 		file, _ = os.ReadFile(dataFile)
 	}
 	if err != nil {
-		log.Printf("failed to open data file: %v", err)
+		log.Printf("failed to open file: %v", err)
 		return
 	}
 
 	err = json.Unmarshal(file, &requests)
 	if err != nil {
-		log.Printf("Failed to decode requests: %v", err)
+		log.Printf("failed to unmarshall requests: %v", err)
 	}
 }
 
@@ -71,7 +100,7 @@ func LoadSavedData() {
 func createFile() error {
 	err := os.WriteFile(dataFile, []byte("[]"), 0644)
 	if err != nil {
-		log.Printf("failed to open data file: %v", err)
+		log.Printf("failed to write to file: %v", err)
 		return err
 	}
 
